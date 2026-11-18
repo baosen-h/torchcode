@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from api.images import compact_images, export_images, import_images, save_image
+
 
 DEFAULT_CATEGORIES = {
     "基础算子": ["relu", "softmax", "gelu", "embedding", "linear", "mlp", "weight_init"],
@@ -82,6 +84,9 @@ class LibraryStore:
                     completion_source TEXT, solved_at TEXT, code TEXT, notes TEXT NOT NULL DEFAULT '',
                     draft_updated_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS images (
+                    id TEXT PRIMARY KEY, content_type TEXT NOT NULL, content BLOB NOT NULL
+                );
             """)
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(custom_tasks)")}
             if "test_cases_json" not in columns:
@@ -100,6 +105,10 @@ class LibraryStore:
                 next_number += 1
             highest_number = connection.execute("SELECT COALESCE(MAX(problem_number), ?) FROM custom_tasks", (len(builtin_ids),)).fetchone()[0]
             connection.execute("INSERT OR IGNORE INTO metadata VALUES ('next_problem_number', ?)", (str(highest_number + 1),))
+            for table, column in [('custom_tasks', 'description'), ('progress', 'notes')]:
+                for row in connection.execute(f"SELECT rowid, {column} FROM {table} WHERE {column} LIKE '%data:image/%'").fetchall():
+                    compacted = compact_images(connection, row[column])
+                    connection.execute(f'UPDATE {table} SET {column} = ? WHERE rowid = ?', (compacted, row['rowid']))
             if connection.execute("SELECT 1 FROM metadata WHERE key = 'database_id'").fetchone():
                 return
             connection.execute("INSERT INTO metadata VALUES ('database_id', ?)", (uuid4().hex,))
@@ -128,6 +137,7 @@ class LibraryStore:
         now = timestamp()
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            values = {**values, 'description': compact_images(connection, values['description'])}
             self._validate_categories(connection, values["category_ids"])
             sequence = connection.execute("SELECT value FROM metadata WHERE key = 'next_problem_number'").fetchone()
             problem_number = int(sequence[0])
@@ -159,6 +169,7 @@ class LibraryStore:
 
     def update_task(self, task_id, values):
         with self.connection() as connection:
+            values = {**values, 'description': compact_images(connection, values['description'])}
             self._validate_categories(connection, values["category_ids"])
             cursor = connection.execute("""UPDATE custom_tasks SET title = ?, description = ?, difficulty = ?,
                 initial_code = ?, source_url = ?, updated_at = ? WHERE id = ?""",
@@ -221,6 +232,7 @@ class LibraryStore:
             connection.execute("DELETE FROM categories WHERE id = ?", (category_id,))
 
     def _write_progress(self, connection, task_id, values):
+        values = {**values, 'notes': compact_images(connection, values.get('notes', ''))}
         connection.execute("""INSERT INTO progress
             (task_id, status, completion_source, solved_at, code, notes, draft_updated_at, updated_at, last_opened_at)
             VALUES (:task_id, :status, :completion_source, :solved_at, :code, :notes, :draft_updated_at, :updated_at, :last_opened_at)
@@ -284,7 +296,20 @@ class LibraryStore:
     def export_backup(self):
         with self.connection() as connection:
             next_number = int(connection.execute("SELECT value FROM metadata WHERE key = 'next_problem_number'").fetchone()[0])
-        return {"version": 1, "exported_at": timestamp(), "next_problem_number": next_number, **self.snapshot()}
+            images = export_images(connection)
+        return {"version": 1, "exported_at": timestamp(), "next_problem_number": next_number, 'images': images, **self.snapshot()}
+
+    def save_image(self, content):
+        with self.connection() as connection:
+            return save_image(connection, content)
+
+    def get_image(self, image_id):
+        with self.connection() as connection:
+            return connection.execute('SELECT content_type, content FROM images WHERE id = ?', (image_id,)).fetchone()
+
+    def compact_markdown(self, markdown):
+        with self.connection() as connection:
+            return compact_images(connection, markdown)
 
     def _import_problem_number(self, connection, task, builtin_count):
         existing = connection.execute("SELECT problem_number FROM custom_tasks WHERE id = ?", (task["id"],)).fetchone()
@@ -302,6 +327,7 @@ class LibraryStore:
     def import_backup(self, backup, builtin_ids):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            import_images(connection, backup.get('images', []))
             existing_ids = {row[0] for row in connection.execute("SELECT id FROM custom_tasks")}
             imported_ids = {task["id"] for task in backup["custom_tasks"]}
             known_ids = builtin_ids | existing_ids | imported_ids
@@ -316,6 +342,7 @@ class LibraryStore:
                     DO UPDATE SET name = excluded.name, position = excluded.position""",
                     (category_id, category["name"], category["position"]))
             for task in backup["custom_tasks"]:
+                task = {**task, 'description': compact_images(connection, task['description'])}
                 if task["id"] in builtin_ids:
                     raise ValueError("备份中的自建问题 ID 与内置题目冲突")
                 problem_number = self._import_problem_number(connection, task, len(builtin_ids))

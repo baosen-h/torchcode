@@ -59,6 +59,28 @@ function Test-ProjectHealth($Health) {
     return $Health -and $Health.service -eq "torchcode" -and $Health.project_root -eq $projectRoot
 }
 
+function Stop-StaleBackend($Health, [int]$Port) {
+    if (-not (Test-ProjectHealth $Health)) { throw "Port $Port does not belong to this project." }
+    $runtime = Read-Health "http://127.0.0.1:$Port/api/environments"
+    if ($runtime.active_runs -gt 0 -or $runtime.job.status -eq "running") {
+        throw "Wait for the current code run or package installation to finish, then launch again."
+    }
+    $listenerIds = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop | Select-Object -ExpandProperty OwningProcess -Unique)
+    if ($listenerIds.Count -ne 1) { throw "Cannot identify the old backend. Close its launcher and retry." }
+    $backendProcessId = $listenerIds[0]
+    $oldBackend = Get-CimInstance Win32_Process -Filter "ProcessId = $backendProcessId" -ErrorAction Stop
+    if ($oldBackend.CommandLine -notmatch 'uvicorn' -or $oldBackend.CommandLine -notmatch 'api\.main:app') {
+        throw "The listener is not a TorchCode Python backend. Close the old service and retry."
+    }
+    Write-Host "Backend code changed; restarting this project's old backend on $Port."
+    Stop-Process -Id $backendProcessId -Force -ErrorAction Stop
+    $deadline = (Get-Date).AddSeconds(10)
+    while (Test-PortInUse $Port) {
+        if ((Get-Date) -ge $deadline) { throw "The old backend port did not become free." }
+        Start-Sleep -Milliseconds 100
+    }
+}
+
 function Wait-ProjectHealth([string]$Url, $Process, [string]$Name) {
     $deadline = (Get-Date).AddSeconds(120)
     while ((Get-Date) -lt $deadline) {
@@ -67,7 +89,7 @@ function Wait-ProjectHealth([string]$Url, $Process, [string]$Name) {
             if ($Process.HasExited) { throw "$Name exited. See logs in $logDirectory" }
         }
         $health = Read-Health $Url
-        if (Test-ProjectHealth $health) { return }
+        if ((Test-ProjectHealth $health) -and $health.backend_revision -eq $expectedRevision) { return }
         Start-Sleep -Milliseconds 500
     }
     throw "$Name did not become ready within 120 seconds. See logs in $logDirectory"
@@ -101,15 +123,18 @@ try {
         }
     }
     Write-Host "TorchCode - checking backend Python (initial environment: '$Environment')..." -ForegroundColor Cyan
-    $checkArguments = $backendArguments + @("-B", "-c", "import sys,fastapi,uvicorn,pydantic; print('Backend Python: '+sys.executable); print('TORCHCODE_PYTHON='+sys.executable)")
+    $checkArguments = $backendArguments + @("-B", "-c", "import sys,fastapi,uvicorn,pydantic; from api.version import backend_revision; print('Backend Python: '+sys.executable); print('TORCHCODE_PYTHON='+sys.executable); print('TORCHCODE_API_REVISION='+backend_revision())")
     $preflight = Start-OwnedProcess $backendExecutable $checkArguments $projectRoot "check"
     if (-not $preflight.WaitForExit(60000)) { throw "Python dependency check timed out. See $logDirectory" }
     if ($preflight.ExitCode -ne 0) { throw "Cannot start the backend in '$Environment'. Check environment name and api/requirements.txt. See $logDirectory" }
     $checkOutput = @(Get-Content -LiteralPath (Join-Path $logDirectory "check.log"))
-    $checkOutput | Where-Object { -not $_.StartsWith("TORCHCODE_PYTHON=") } | Write-Host
+    $checkOutput | Where-Object { -not $_.StartsWith("TORCHCODE_") } | Write-Host
     $pythonLine = $checkOutput | Where-Object { $_.StartsWith("TORCHCODE_PYTHON=") } | Select-Object -Last 1
     if (-not $pythonLine) { throw "Cannot identify the backend Python. See $logDirectory" }
     $actualPython = $pythonLine.Substring("TORCHCODE_PYTHON=".Length)
+    $revisionLine = $checkOutput | Where-Object { $_.StartsWith("TORCHCODE_API_REVISION=") } | Select-Object -Last 1
+    if (-not $revisionLine) { throw "Cannot identify the backend code version." }
+    $expectedRevision = $revisionLine.Substring("TORCHCODE_API_REVISION=".Length)
     @{ environment = $Environment; python = $actualPython } | ConvertTo-Json | Set-Content -LiteralPath $backendSettings -Encoding UTF8
     Write-Host "Node.js: $($node.Source)"
     if ($CheckOnly) { Write-Host "Startup checks passed." -ForegroundColor Green; exit 0 }
@@ -121,8 +146,10 @@ try {
     $backend = $null
     $frontend = $null
     if (Test-PortInUse $BackendPort) {
-        if (-not (Test-ProjectHealth (Read-Health "$apiUrl/api/health"))) { throw "Port $BackendPort is occupied. Close the old server, or choose -BackendPort with another port." }
-        Write-Host "Reusing this project's existing backend on $BackendPort."
+        $backendHealth = Read-Health "$apiUrl/api/health"
+        if (-not (Test-ProjectHealth $backendHealth)) { throw "Port $BackendPort is occupied. Close the old server, or choose -BackendPort with another port." }
+        if ($backendHealth.backend_revision -ne $expectedRevision) { Stop-StaleBackend $backendHealth $BackendPort }
+        if ($backendHealth.backend_revision -eq $expectedRevision) { Write-Host "Reusing this project's current backend on $BackendPort." }
     }
     if (-not (Test-PortInUse $BackendPort)) {
         Write-Host "Starting backend..."

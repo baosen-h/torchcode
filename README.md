@@ -64,7 +64,7 @@ Double-click **[start_torchcode.bat](start_torchcode.bat)** in the repository ro
 
 The launcher checks dependencies, starts the backend using the `torchcode` environment by default, starts the frontend, and opens <http://127.0.0.1:3000/problems>. Keep the launcher window open. Press Enter to stop the services it started.
 
-- Healthy services already running for this project are reused and remain running when the launcher exits.
+- Services running the current code for this project are reused. When backend code changes, the launcher restarts the verified old backend; a running code or installation job must finish first. Reused services remain running when the launcher exits.
 - If another application occupies a port, the launcher reports the conflict without terminating it.
 - Startup logs are saved under `data/startup-logs/`.
 - If Conda cannot be found, run from Anaconda Prompt or set `TORCHCODE_CONDA_EXE` to the full path of `conda.exe`.
@@ -128,9 +128,9 @@ Open “Environments” from the top navigation or the environment link above th
 
 Built-in numbers follow the upstream notebook filenames. Custom problems receive stable, increasing numbers. Deleted numbers are not reused; backups preserve numbers where available and allocate a new number if another problem already uses it. Opening a problem records its latest open time; choose **Last opened** in the library sort menu to return to recent work. Existing open times stay blank until the first visit after this upgrade.
 
-Paste an image into the description editor or solution notes with **Ctrl+V**, or use the image button to choose a file. PNG, JPEG, WebP, and GIF are supported, up to **1 MB per image** and 5,000,000 characters per Markdown field. Notes autosave; save the problem form to store description changes. Preview notes or view the saved description to see the image. Images are embedded in Markdown, kept in SQLite, and included in JSON backups. Backup import accepts files up to 100 MB.
+Paste an image into the description editor or solution notes with **Ctrl+V**, or use the image button to choose a file. PNG, JPEG, WebP, and GIF are supported, up to **10 MB per image**. Images are stored separately from Markdown; each insertion uses a short image URL and leaves the cursor on the next line for writing. Markdown fields support up to 5,000,000 characters of text. Notes autosave; save the problem form to store description changes. Preview notes or view the saved description to see the image. Image bytes are kept in SQLite and included in JSON backups. Existing inline image data is converted to short references automatically, with the image preserved. Backup import accepts files up to 100 MB.
 
-The library's Source column links built-in problems to the upstream repository. Custom sources stay empty until you enter a URL in the problem form.
+The library has a dedicated Last opened column; unvisited problems show Not opened yet. Its Source column displays clickable URLs and links built-in problems to the upstream repository. Custom sources stay empty until you enter a URL in the problem form.
 
 ## Custom tests
 
@@ -193,7 +193,7 @@ npm run lint
 npm run build
 ```
 
-The repository includes 50 backend regression tests. GitHub Actions checks API tests and frontend lint/build. Installation tests use simulated commands and do not download packages or modify developers' Conda environments.
+The repository includes 55 backend regression tests. GitHub Actions checks API tests and frontend lint/build. Installation tests use simulated commands and do not download packages or modify developers' Conda environments.
 
 ```text
 api/                  FastAPI, SQLite, execution workers, environments, tests

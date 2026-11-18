@@ -22,7 +22,8 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     const current = ++generation.current;
     try {
-      const identity = await api<{ database_id: string }>("/health");
+      const identity = await api<{ database_id: string; api_version?: number }>("/health");
+      if ((identity.api_version || 0) < 3) throw new Error("后台版本较旧，请重新运行启动器以更新服务。");
       const migrationWarning = await migrateLegacyRecords(identity.database_id);
       const nextLibrary = await api<Library>("/library");
       if (current !== generation.current) return;
@@ -38,6 +39,11 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => { void refresh().catch(() => undefined); }, [refresh]);
+  useEffect(() => {
+    const onFocus = () => { void refresh().catch(() => undefined); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
 
   return <LibraryContext.Provider value={{ ...library, isLoading, error, warning, refresh }}>{children}</LibraryContext.Provider>;
 }

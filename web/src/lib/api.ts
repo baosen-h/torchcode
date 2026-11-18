@@ -54,7 +54,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     cache: "no-store",
-    headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
+    headers: { ...(options.body && !(options.body instanceof Blob) ? { "Content-Type": "application/json" } : {}), ...options.headers },
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) {

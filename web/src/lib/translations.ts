@@ -337,5 +337,12 @@ export const ENGLISH: Record<string, string> = {
   "可直接粘贴图片 · 单张最大 1 MB": "Paste images directly · Up to 1 MB each",
   "无法读取图片，请重试。": "Could not read the image. Please retry.",
   "文字和图片内容总长度不能超过 500 万字符。": "Text and image content must not exceed 5,000,000 characters.",
-  "最近打开": "Last opened"
+  "最近打开": "Last opened",
+  "单张图片不能超过 10 MB。": "Each image must be 10 MB or smaller.",
+  "可直接粘贴图片 · 单张最大 10 MB": "Paste images directly · Up to 10 MB each",
+  "正在保存图片…": "Saving image…",
+  "后台版本较旧，请重新运行启动器以更新服务。": "The backend is outdated. Run the launcher again to update it.",
+  "尚未打开": "Not opened yet",
+  "图片不存在": "Image not found.",
+  "备份中的图片数据无效": "The backup contains invalid image data."
 };

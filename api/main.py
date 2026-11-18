@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -22,6 +22,8 @@ from api.environments import EnvironmentManager, EnvironmentBusyError
 from api.environment_routes import create_environment_router
 from api.library import LibraryStore, TestCasesConflictError, empty_progress, timestamp
 from api.parser import get_all_templates
+from api.images import IMAGE_ID, MAX_IMAGE_BYTES
+from api.version import API_VERSION, backend_revision
 from torch_judge.tasks import TASKS
 
 
@@ -178,6 +180,7 @@ class BackupProgress(BaseModel):
 class Backup(BaseModel):
     version: Literal[1]
     next_problem_number: int | None = Field(default=None, ge=1, le=1_000_000_001)
+    images: list['BackupImage'] = Field(default_factory=list, max_length=10000)
     exported_at: str
     task_ids: list[str] = Field(max_length=10000)
     custom_tasks: list[BackupTask] = Field(max_length=10000)
@@ -197,7 +200,18 @@ class Backup(BaseModel):
         return self
 
 
+class BackupImage(BaseModel):
+    id: str = Field(pattern=r'^[a-f0-9]{64}$')
+    content_type: Literal['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+    content: str = Field(max_length=14_000_000)
+
+
+class MarkdownInput(BaseModel):
+    markdown: str = Field(max_length=MAX_MARKDOWN_LENGTH)
+
+
 def create_app(database_path=None, environment_manager=None):
+    loaded_revision = backend_revision()
     store = LibraryStore(database_path or os.environ.get(
         "TORCHCODE_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "library.db")))
     templates = get_all_templates()
@@ -261,7 +275,29 @@ def create_app(database_path=None, environment_manager=None):
     @application.get("/api/health")
     def health():
         return {"status": "ok", "database_id": store.database_id(), "service": "torchcode",
-                "project_root": str(Path(__file__).resolve().parent.parent)}
+                "project_root": str(Path(__file__).resolve().parent.parent),
+                'api_version': API_VERSION, 'backend_revision': loaded_revision, 'pid': os.getpid()}
+
+    @application.post('/api/images', status_code=201)
+    async def upload_image(request: Request):
+        content = bytearray()
+        async for chunk in request.stream():
+            content.extend(chunk)
+            if len(content) > MAX_IMAGE_BYTES:
+                raise HTTPException(status_code=413, detail='单张图片不能超过 10 MB。')
+        return {'url': store.save_image(bytes(content))}
+
+    @application.post('/api/images/compact')
+    def compact_markdown(request: MarkdownInput):
+        return {'markdown': store.compact_markdown(request.markdown)}
+
+    @application.get('/api/images/{image_id}')
+    def get_image(image_id: str):
+        row = store.get_image(image_id) if IMAGE_ID.fullmatch(image_id) else None
+        if row is None:
+            raise HTTPException(status_code=404, detail='图片不存在')
+        return Response(content=row['content'], media_type=row['content_type'],
+                        headers={'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff'})
 
     @application.get("/api/library")
     def get_library():

@@ -345,3 +345,11 @@ fieldset.form-stack { border: 0; min-width: 0; margin: 0; padding: 0; }
 html[lang="en"] .workspace-toolbar { flex-wrap: wrap; height: auto; min-height: 58px; gap: 10px; padding-top: 10px; padding-bottom: 10px; }
 html[lang="en"] .workspace-tabs { overflow-x: auto; }
 html[lang="en"] .category-row-actions { flex-wrap: wrap; }
+
+.problem-table .last-opened-column { min-width: 140px; font-size: 11px; color: #a3a3ad; font-variant-numeric: tabular-nums; }
+.problem-table .source-url { margin: 0; max-width: 210px; font-size: 11px; line-height: 1.7; }
+.problem-table .source-url span { overflow-wrap: anywhere; }
+.problem-table .source-url svg { flex-shrink: 0; }
+.problem-table .source-url span { text-decoration: underline; text-underline-offset: 3px; }
+.problem-table .problem-title-cell { width: 30%; }
+.problem-table { min-width: 1030px; }
