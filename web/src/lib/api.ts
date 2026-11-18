@@ -9,12 +9,14 @@ export type Progress = {
   solved_at: string | null;
   draft_updated_at: string;
   updated_at: string;
+  last_opened_at: string | null;
 };
 
 export type Category = { id: string; name: string; position: number };
 export type TestCase = { id: string; name: string; code: string; enabled: boolean };
 export type Task = {
   id: string;
+  problem_number: number;
   title: string;
   difficulty: Difficulty;
   source: "builtin" | "custom";

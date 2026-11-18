@@ -71,7 +71,7 @@ def get_all_templates(templates_dir: str = "../templates") -> dict:
         if match:
             task_id = match.group(1)
             task_id = TASK_ID_ALIASES.get(task_id, task_id)
-            templates[task_id] = parse_notebook_template(filepath)
+            templates[task_id] = {**parse_notebook_template(filepath), "problem_number": int(filename.split("_", 1)[0])}
             
     return templates
 

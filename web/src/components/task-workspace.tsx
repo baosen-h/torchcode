@@ -7,10 +7,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Editor, { loader, OnMount } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import { Allotment } from "allotment";
 import { ArrowLeft, Check, ChevronDown, ExternalLink, FolderTree, Pencil, Play, RotateCcw, Trash2 } from "lucide-react";
 import "allotment/dist/style.css";
@@ -24,12 +20,10 @@ import { TaskForm } from "./task-form";
 import { SubmissionResponse, TestResults } from "./test-results";
 import { TestCasesEditor } from "./test-cases-editor";
 import { EnvironmentPicker } from "./environment-picker";
+import { MarkdownEditor } from "./markdown-editor";
+import { MarkdownContent as Markdown } from "./markdown-content";
 
 loader.config({ paths: { vs: "/editor-assets/vs" } });
-
-function Markdown({ children, preserveHeading = false }: { children: string; preserveHeading?: boolean }) {
-  return <div className={`markdown-body ${preserveHeading ? "preserve-heading" : ""}`}><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{children}</ReactMarkdown></div>;
-}
 
 export function TaskWorkspace({ taskId }: { taskId: string }) {
   const { t } = useLanguage();
@@ -158,7 +152,7 @@ function LoadedWorkspace({ task, onTaskChange }: { task: TaskDetails; onTaskChan
       <div className="workspace-left"><div className="workspace-tabs"><button className={activeTab === "problem" ? "active" : ""} onClick={() => setActiveTab("problem")}>{t("问题描述")}</button><button className={activeTab === "notes" ? "active" : ""} onClick={() => setActiveTab("notes")}>{t("我的解法")}</button>{isCustom && <button className={activeTab === "tests" ? "active" : ""} onClick={() => setActiveTab("tests")}>{t("测试用例")}{testSuite.isDirty && <span className="tests-unsaved" aria-hidden="true" title={t("有未保存的用例")}>●</span>}</button>}<button className={activeTab === "results" ? "active" : ""} onClick={() => setActiveTab("results")}>{t("测试结果")}{results && results.mode !== "run" && <span className={results.success ? "text-success" : "text-error"}>{results.passed}/{results.total}</span>}</button></div>
         <div className={`workspace-description ${activeTab === "notes" ? "notes-pane" : ""}`}>
           {activeTab === "problem" && <>
-            <div className="task-title-row"><h1>{task.title}</h1><div>{isCustom && <button className="icon-button" aria-label={t("编辑问题")} title={t("编辑问题")} disabled={isBusy} onClick={() => setIsEditing(true)}><Pencil size={17} /></button>}{isCustom && <button className="icon-button danger" aria-label={t("删除问题")} title={t("删除问题")} disabled={isBusy} onClick={() => { setError(""); setConfirmation("delete"); }}><Trash2 size={17} /></button>}</div></div>
+            <div className="task-title-row"><h1><span className="task-number">#{String(task.problem_number).padStart(2, "0")}</span>{task.title}</h1><div>{isCustom && <button className="icon-button" aria-label={t("编辑问题")} title={t("编辑问题")} disabled={isBusy} onClick={() => setIsEditing(true)}><Pencil size={17} /></button>}{isCustom && <button className="icon-button danger" aria-label={t("删除问题")} title={t("删除问题")} disabled={isBusy} onClick={() => { setError(""); setConfirmation("delete"); }}><Trash2 size={17} /></button>}</div></div>
             <div className="task-metadata"><DifficultyBadge difficulty={task.difficulty} /><span className={`source-label ${isCustom ? "custom" : ""}`}>{isCustom ? t("自建问题") : t("内置练习")}</span>{hasSolved && <span className="solved-label"><Check size={16} />{t("已解决 ·")} {task.progress.completion_source ? t(COMPLETION_LABELS[task.progress.completion_source]) : t("自行确认")}</span>}
               {isCustom && !hasSolved && <select className="status-select" aria-label={t("问题状态")} value={task.progress.status} disabled={isBusy} onChange={(event) => void updateStatus(event.target.value as TaskStatus)}><option value="todo">{t("未开始")}</option><option value="attempted">{t("进行中")}</option></select>}</div>
             <div className="task-categories">{categories.filter((category) => task.category_ids.includes(category.id)).map((category) => <span className="tag" key={category.id}>{categoryLabel(category.name)}</span>)}<button className="text-button" onClick={() => { setSelectedCategories(task.category_ids); setError(""); setIsEditingCategories(true); }}><FolderTree size={14} />{t("调整分类")}</button></div>
@@ -167,8 +161,9 @@ function LoadedWorkspace({ task, onTaskChange }: { task: TaskDetails; onTaskChan
             {task.hint && <details className="task-hint"><summary><ChevronDown size={16} />{t("提示")}</summary><Markdown>{task.hint}</Markdown></details>}
             {isCustom && <div className="personal-task-note">{enabledTestCount ? t("已启用 {0} 个自定义用例。点击“运行测试”检查代码，全部通过后自动标记完成。", enabledTestCount) : <>{t("可以直接运行右侧代码查看输出，或在")}<button className="text-button" onClick={() => setActiveTab("tests")}>{t("测试用例")}</button>{t("中添加断言来验证结果。")}</>}{t("你也可以手动标记“已解决”。")}</div>}
             {task.progress.solved_at && <p className="solved-date">{t("解决于 {0}", new Date(task.progress.solved_at).toLocaleString(locale))}</p>}
+            {task.progress.last_opened_at && <p className="solved-date">{t("最近打开：{0}", new Date(task.progress.last_opened_at).toLocaleString(locale))}</p>}
           </>}
-          {activeTab === "notes" && <><div className="notes-heading"><div><h2>{t("我的解法")}</h2><p className="muted">{t("记录思路、关键代码与踩过的坑，支持 Markdown。")}</p></div><button className="button button-small" onClick={() => setNotesPreview(!notesPreview)}>{notesPreview ? t("继续编辑") : t("预览")}</button></div>{notesPreview ? draft.notes ? <Markdown>{draft.notes}</Markdown> : <div className="empty-state">{t("还没有解法记录。")}</div> : <textarea className="notes-editor" aria-label={t("我的解法")} value={draft.notes} onChange={(event) => updateDraft({ notes: event.target.value })} placeholder={t("## 解决思路\n\n这次问题的原因是什么？\n\n## 关键实现\n\n## 下次遇到时要注意")} spellCheck={false} />}</>}
+          {activeTab === "notes" && <><div className="notes-heading"><div><h2>{t("我的解法")}</h2><p className="muted">{t("记录思路、关键代码与踩过的坑，支持 Markdown。")}</p></div><button className="button button-small" onClick={() => setNotesPreview(!notesPreview)}>{notesPreview ? t("继续编辑") : t("预览")}</button></div>{notesPreview ? draft.notes ? <Markdown>{draft.notes}</Markdown> : <div className="empty-state">{t("还没有解法记录。")}</div> : <MarkdownEditor className="notes-editor" rows={12} ariaLabel={t("我的解法")} value={draft.notes} onChange={(notes) => updateDraft({ notes })} placeholder={t("## 解决思路\n\n这次问题的原因是什么？\n\n## 关键实现\n\n## 下次遇到时要注意")} disabled={isBusy} />}</>}
           {activeTab === "results" && <TestResults results={results} isSubmitting={isSubmitting} />}
           {activeTab === "tests" && isCustom && <TestCasesEditor cases={testSuite.cases} onChange={changeTestCases} onSave={() => void testSuite.save().catch(() => undefined)} onDiscard={() => { testSuite.discard(); setResults(null); }} isDirty={testSuite.isDirty} isSaving={testSuite.isSaving} disabled={isBusy || isSubmitting} error={testSuite.error} />}
         </div>

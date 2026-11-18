@@ -5,17 +5,17 @@ import { useLanguage } from "@/lib/i18n";
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowDownToLine, ArrowUpFromLine, Check, Circle, Clock3, FolderTree, Plus, Search, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Check, Circle, Clock3, ExternalLink, FolderTree, Plus, Search, X } from "lucide-react";
 import { api, COMPLETION_LABELS, errorMessage, STATUS_LABELS, Task, TaskDetails } from "@/lib/api";
 import { useLibrary } from "./library-provider";
 import { DifficultyBadge, ErrorNotice, Modal } from "./ui";
 import { TaskForm } from "./task-form";
 
 const SCROLL_KEY = "torchcode_library_scroll";
-const MAX_BACKUP_SIZE = 20 * 1024 * 1024;
+const MAX_BACKUP_SIZE = 100 * 1024 * 1024;
 
 export function ProblemLibrary() {
-  const { t, categoryLabel } = useLanguage();
+  const { t, locale, categoryLabel } = useLanguage();
   const { tasks, categories, isLoading, error: libraryError, refresh } = useLibrary();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -90,7 +90,7 @@ export function ProblemLibrary() {
     if (!file) return;
     setError("");
     try {
-      if (file.size > MAX_BACKUP_SIZE) throw new Error(t("备份文件不能超过 20 MB。"));
+      if (file.size > MAX_BACKUP_SIZE) throw new Error(t("备份文件不能超过 100 MB。"));
       const data = JSON.parse(await file.text());
       if (data?.version !== 1 || !Array.isArray(data.custom_tasks) || !Array.isArray(data.categories)) throw new Error(t("请选择有效的 TorchCode 备份文件。"));
       setBackup(data);
@@ -131,6 +131,7 @@ export function ProblemLibrary() {
       && (!status || task.progress.status === status);
   }).sort((first, second) => {
     if (sort === "title") return first.title.localeCompare(second.title);
+    if (sort === "opened") return (second.progress.last_opened_at || "").localeCompare(first.progress.last_opened_at || "");
     if (sort === "recent") return (second.progress.updated_at || second.updated_at || "").localeCompare(first.progress.updated_at || first.updated_at || "");
     if (first.source !== second.source) return first.source === "custom" ? -1 : 1;
     if (first.source === "custom") return second.created_at.localeCompare(first.created_at);
@@ -164,14 +165,15 @@ export function ProblemLibrary() {
             <select className="field filter-select" aria-label={t("按状态筛选")} value={status} onChange={(event) => filter("status", event.target.value)}><option value="">{t("全部状态")}</option><option value="todo">{t("未开始")}</option><option value="attempted">{t("进行中")}</option><option value="solved">{t("已解决")}</option></select>
             <select className="field filter-select" aria-label={t("按难度筛选")} value={difficulty} onChange={(event) => filter("difficulty", event.target.value)}><option value="">{t("全部难度")}</option><option>Easy</option><option>Medium</option><option>Hard</option><option value="unset">{t("未设置")}</option></select>
           </div>
-          <div className="list-caption"><span>{(selectedCategory ? categoryLabel(selectedCategory) : "") || (categoryId === "uncategorized" ? t("未分类") : t("全部分类"))}<span className="muted">{t("· {0} 个问题", filteredTasks.length)}</span></span><select aria-label={t("题目排序")} className="sort-select" value={sort} onChange={(event) => filter("sort", event.target.value)}><option value="default">{t("默认排序")}</option><option value="recent">{t("最近更新")}</option><option value="title">{t("标题排序")}</option></select></div>
-          {isLoading ? <div className="empty-state">{t("正在加载题库…")}</div> : <div className="table-scroll"><table className="problem-table"><thead><tr><th className="status-column">{t("状态")}</th><th>{t("题目")}</th><th>{t("分类")}</th><th>{t("难度")}</th><th>{t("来源")}</th></tr></thead><tbody>
+          <div className="list-caption"><span>{(selectedCategory ? categoryLabel(selectedCategory) : "") || (categoryId === "uncategorized" ? t("未分类") : t("全部分类"))}<span className="muted">{t("· {0} 个问题", filteredTasks.length)}</span></span><select aria-label={t("题目排序")} className="sort-select" value={sort} onChange={(event) => filter("sort", event.target.value)}><option value="default">{t("默认排序")}</option><option value="recent">{t("最近更新")}</option><option value="opened">{t("最近打开")}</option><option value="title">{t("标题排序")}</option></select></div>
+          {isLoading ? <div className="empty-state">{t("正在加载题库…")}</div> : <div className="table-scroll"><table className="problem-table"><thead><tr><th className="number-column">#</th><th className="status-column">{t("状态")}</th><th>{t("题目")}</th><th>{t("分类")}</th><th>{t("难度")}</th><th>{t("来源")}</th></tr></thead><tbody>
             {filteredTasks.map((task) => <tr key={task.id}>
+              <td className="number-column">{String(task.problem_number).padStart(2, "0")}</td>
               <td className="status-column">{task.source === "custom" ? <button className={`status-button status-${task.progress.status}`} aria-label={t("{0}：{1}", task.progress.status === "solved" ? t("撤销完成") : t("标记已解决"), task.title)} disabled={!!busyId} onClick={() => void toggleSolved(task)}>{task.progress.status === "solved" ? <Check size={19} /> : task.progress.status === "attempted" ? <Clock3 size={17} /> : <Circle size={17} />}</button> : <span className={`status-button status-${task.progress.status}`} title={t(STATUS_LABELS[task.progress.status])} aria-label={t(STATUS_LABELS[task.progress.status])}>{task.progress.status === "solved" ? <Check size={19} /> : task.progress.status === "attempted" ? <Clock3 size={17} /> : <Circle size={17} />}</span>}</td>
               <td className="problem-title-cell"><Link href={`/problems/${task.id}?returnTo=${encodeURIComponent(returnPath)}`} onClick={rememberPosition} className={`problem-title ${task.progress.status === "solved" ? "solved" : ""}`}>{task.title}</Link>
-                {task.progress.completion_source && <div className="completion-note">{t(COMPLETION_LABELS[task.progress.completion_source])}</div>}</td>
+                {task.progress.completion_source && <div className="completion-note">{t(COMPLETION_LABELS[task.progress.completion_source])}</div>}{task.progress.last_opened_at && <div className="completion-note">{t("最近打开：{0}", new Date(task.progress.last_opened_at).toLocaleString(locale))}</div>}</td>
               <td><div className="table-categories">{task.category_ids.length ? categories.filter((category) => task.category_ids.includes(category.id)).map((category) => <button key={category.id} className="tag" onClick={() => filter("category", category.id)}>{categoryLabel(category.name)}</button>) : <span className="muted">—</span>}</div></td>
-              <td><DifficultyBadge difficulty={task.difficulty} /></td><td><span className={`source-label ${task.source === "custom" ? "custom" : ""}`}>{task.source === "custom" ? t("自建") : t("内置")}</span></td>
+              <td><DifficultyBadge difficulty={task.difficulty} /></td><td>{task.source_url ? <a className="source-link" href={task.source_url} target="_blank" rel="noopener noreferrer" aria-label={t("打开来源链接")}>{task.source === "custom" ? t("自建") : t("TorchCode 上游")}{" "}<ExternalLink size={12} /></a> : null}</td>
             </tr>)}
           </tbody></table>{!filteredTasks.length && <div className="empty-state"><Search size={30} /><h3>{tasks.length ? t("没有找到匹配的问题") : t("从第一个问题开始")}</h3><p>{tasks.length ? t("试试其他关键词，或清除筛选条件。") : t("点击右上角新增问题，记录你的学习与实践。")}</p>{!!searchParams.size && <button className="button" onClick={() => window.history.replaceState(null, "", "/problems")}>{t("清除筛选")}</button>}</div>}</div>}
           <div className="library-footer"><span className="muted">{t("完成的问题会划线显示，仍可点击查看解法。")}</span><div><button className="text-button" disabled={isBackingUp || !tasks.length} onClick={() => void exportBackup()}><ArrowDownToLine size={15} />{isBackingUp ? t("导出中…") : t("导出备份")}</button><button className="text-button" onClick={() => fileInput.current?.click()}><ArrowUpFromLine size={15} />{t("导入备份")}</button><input ref={fileInput} type="file" accept="application/json,.json" className="visually-hidden" aria-label={t("选择备份文件")} onChange={(event) => void selectBackup(event)} /></div></div>

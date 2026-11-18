@@ -29,6 +29,8 @@ Built on [duoan/TorchCode](https://github.com/duoan/TorchCode), this version als
 | --- | --- |
 | Chinese / English interface | Switch language in the header; the browser remembers your choice |
 | Personal problem library | Create, edit, and delete problems in the browser, with Markdown, equations, source links, and difficulty |
+| Numbered problems and recency | Stable problem numbers, plus the latest open time in the list and problem view |
+| Pasted images | Paste or choose images in descriptions and solution notes; images stay with the Markdown and backups |
 | Editable categories | Assign multiple categories; create, rename, reorder, merge, or delete categories |
 | Completion tracking | Solved titles appear crossed out; mark custom problems solved manually or by passing tests |
 | Code and solution notes | Use Monaco, automatically save code drafts, and write Markdown notes with a preview |
@@ -122,6 +124,14 @@ Open “Environments” from the top navigation or the environment link above th
 
 ![Conda environments and installation forms](assets/screenshots/en/environments.png)
 
+## Problem numbers, recent activity, and images
+
+Built-in numbers follow the upstream notebook filenames. Custom problems receive stable, increasing numbers. Deleted numbers are not reused; backups preserve numbers where available and allocate a new number if another problem already uses it. Opening a problem records its latest open time; choose **Last opened** in the library sort menu to return to recent work. Existing open times stay blank until the first visit after this upgrade.
+
+Paste an image into the description editor or solution notes with **Ctrl+V**, or use the image button to choose a file. PNG, JPEG, WebP, and GIF are supported, up to **1 MB per image** and 5,000,000 characters per Markdown field. Notes autosave; save the problem form to store description changes. Preview notes or view the saved description to see the image. Images are embedded in Markdown, kept in SQLite, and included in JSON backups. Backup import accepts files up to 100 MB.
+
+The library's Source column links built-in problems to the upstream repository. Custom sources stay empty until you enter a URL in the problem form.
+
 ## Custom tests
 
 Custom tests can check any Python function or class. Use plain `assert`, `numpy.testing.assert_allclose`, or `torch.testing.assert_close`, depending on the problem. Install the required packages in the selected execution environment.
@@ -183,7 +193,7 @@ npm run lint
 npm run build
 ```
 
-The repository includes 46 backend regression tests. GitHub Actions checks API tests and frontend lint/build. Installation tests use simulated commands and do not download packages or modify developers' Conda environments.
+The repository includes 50 backend regression tests. GitHub Actions checks API tests and frontend lint/build. Installation tests use simulated commands and do not download packages or modify developers' Conda environments.
 
 ```text
 api/                  FastAPI, SQLite, execution workers, environments, tests

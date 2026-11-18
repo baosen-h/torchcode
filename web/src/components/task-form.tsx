@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import { api, Category, Difficulty, errorMessage, TaskDetails, TaskInput } from "@/lib/api";
 import { useLibrary } from "./library-provider";
 import { CategoryPicker, ErrorNotice, Modal } from "./ui";
+import { MarkdownEditor } from "./markdown-editor";
 
 export function TaskForm({ task, onClose, onSaved }: { task?: TaskDetails; onClose: () => void; onSaved: (task: TaskDetails) => void }) {
   const { t } = useLanguage();
@@ -58,7 +59,7 @@ export function TaskForm({ task, onClose, onSaved }: { task?: TaskDetails; onClo
     <form onSubmit={save} className="form-stack">
       <fieldset disabled={isBusy} className="form-stack">
         <label className="form-label">{t("问题标题")} <span className="required">*</span><input className="field" required maxLength={200} value={values.title} onChange={(event) => change("title", event.target.value)} placeholder={t("例如：排查混合精度训练中的 NaN")} autoFocus /></label>
-        <label className="form-label">{t("问题描述")} <span className="muted">{t("支持 Markdown 和公式")}</span><textarea className="field" rows={6} value={values.description} onChange={(event) => change("description", event.target.value)} placeholder={t("描述背景、遇到的问题、约束或示例……")} /></label>
+        <div className="form-label">{t("问题描述")} <span className="muted">{t("支持 Markdown 和公式")}</span><MarkdownEditor className="field" rows={8} value={values.description} onChange={(value) => change("description", value)} placeholder={t("描述背景、遇到的问题、约束或示例……")} ariaLabel={t("问题描述")} disabled={isBusy} /></div>
         <div className="form-label">{t("分类")} <span className="muted">{t("可多选")}</span><CategoryPicker selected={values.category_ids} onChange={(ids) => change("category_ids", ids)} />
           <div className="inline-form"><input aria-label={t("新分类名称")} className="field" maxLength={60} value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder={t("新增一个分类")} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addCategory(); } }} /><button type="button" className="button" disabled={!categoryName.trim()} onClick={() => void addCategory()}><Plus size={15} />{t("添加")}</button></div>
         </div>

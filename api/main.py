@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import sys
 from contextlib import asynccontextmanager
@@ -27,11 +28,13 @@ from torch_judge.tasks import TASKS
 Difficulty = Literal["", "Easy", "Medium", "Hard"]
 Status = Literal["todo", "attempted", "solved"]
 MAX_TEXT_LENGTH = 1_000_000
+MAX_MARKDOWN_LENGTH = 5_000_000
+BUILTIN_SOURCE_URL = "https://github.com/duoan/TorchCode"
 
 
 class TaskInput(BaseModel):
     title: str = Field(min_length=1, max_length=200)
-    description: str = Field(default="", max_length=MAX_TEXT_LENGTH)
+    description: str = Field(default="", max_length=MAX_MARKDOWN_LENGTH)
     difficulty: Difficulty = ""
     initial_code: str = Field(default="", max_length=MAX_TEXT_LENGTH)
     source_url: str = Field(default="", max_length=2000)
@@ -75,7 +78,7 @@ class MergeCategory(BaseModel):
 class ProgressChange(BaseModel):
     status: Status = "todo"
     code: str = Field(default="", max_length=MAX_TEXT_LENGTH)
-    notes: str = Field(default="", max_length=MAX_TEXT_LENGTH)
+    notes: str = Field(default="", max_length=MAX_MARKDOWN_LENGTH)
     draft_updated_at: datetime | None = None
 
     @field_validator("draft_updated_at")
@@ -139,6 +142,7 @@ class LegacyRecords(BaseModel):
 
 class BackupTask(TaskInput):
     id: str = Field(pattern=r"^custom_[a-f0-9]{32}$")
+    problem_number: int | None = Field(default=None, ge=1, le=1_000_000_000)
     created_at: str
     updated_at: str
     test_cases: list[TestCaseInput] = Field(default_factory=list, max_length=50)
@@ -165,13 +169,15 @@ class BackupProgress(BaseModel):
     completion_source: Literal["manual", "tests", "legacy"] | None = None
     solved_at: str | None = None
     code: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
-    notes: str = Field(default="", max_length=MAX_TEXT_LENGTH)
+    notes: str = Field(default="", max_length=MAX_MARKDOWN_LENGTH)
     draft_updated_at: str = ""
     updated_at: str = ""
+    last_opened_at: str | None = None
 
 
 class Backup(BaseModel):
     version: Literal[1]
+    next_problem_number: int | None = Field(default=None, ge=1, le=1_000_000_001)
     exported_at: str
     task_ids: list[str] = Field(max_length=10000)
     custom_tasks: list[BackupTask] = Field(max_length=10000)
@@ -231,11 +237,11 @@ def create_app(database_path=None, environment_manager=None):
         assignments = {}
         for assignment in snapshot["task_categories"]:
             assignments.setdefault(assignment["task_id"], []).append(assignment["category_id"])
-        builtins = [{"id": task_id, "title": task["title"], "difficulty": task.get("difficulty", ""),
-                     "source": "builtin", "source_url": "", "hint": task.get("hint", ""),
+        builtins = [{"id": task_id, "problem_number": templates.get(task_id, {}).get("problem_number", index), "title": task["title"], "difficulty": task.get("difficulty", ""),
+                     "source": "builtin", "source_url": BUILTIN_SOURCE_URL, "hint": task.get("hint", ""),
                      "description": templates.get(task_id, {}).get("description", "Description not found."),
                      "initial_code": templates.get(task_id, {}).get("initial_code", "# Write your code here."),
-                     "created_at": "", "updated_at": "", "test_cases": [], "tests_revision": 0} for task_id, task in TASKS.items()]
+                     "created_at": "", "updated_at": "", "test_cases": [], "tests_revision": 0} for index, (task_id, task) in enumerate(TASKS.items(), start=1)]
         tasks = builtins + [{**task, "source": "custom", "hint": ""} for task in snapshot["custom_tasks"]]
         return [{**task, "category_ids": assignments.get(task["id"], []),
                  "progress": snapshot["progress"].get(task["id"], empty_progress())} for task in tasks]
@@ -248,7 +254,7 @@ def create_app(database_path=None, environment_manager=None):
 
     def task_summaries(tasks):
         return [{key: value for key, value in task.items() if key not in {"hint", "description", "initial_code", "progress", "test_cases", "tests_revision"}}
-                | {"search_text": task["description"] + "\n" + task["progress"]["notes"],
+                | {"search_text": re.sub(r"data:image/[^;]+;base64,[A-Za-z0-9+/=]+", "", task["description"] + "\n" + task["progress"]["notes"]),
                    "progress": {key: value for key, value in task["progress"].items() if key not in {"code", "notes"}}}
                 for task in tasks]
 
@@ -273,6 +279,8 @@ def create_app(database_path=None, environment_manager=None):
 
     @application.get("/api/tasks/{task_id}")
     def get_task(task_id: str):
+        task_details(task_id)
+        store.record_opened(task_id)
         return task_details(task_id)
 
     @application.put("/api/tasks/{task_id}")

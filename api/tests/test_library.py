@@ -34,8 +34,67 @@ class LibraryApiTests(unittest.TestCase):
         self.assertGreater(len(self.library["tasks"]), 30)
         task = self.client.get("/api/tasks/relu").json()
         self.assertEqual(task["source"], "builtin")
+        self.assertEqual(task["source_url"], "https://github.com/duoan/TorchCode")
+        self.assertEqual(task["problem_number"], 1)
+        self.assertIsNotNone(task["progress"]["last_opened_at"])
         self.assertIn("torch", task["initial_code"])
         self.assertTrue(task["description"])
+
+    def test_problem_numbers_are_stable_and_recent_open_is_persisted(self):
+        first = self.create_task()
+        second = self.create_task(title="另一个问题")
+        self.assertGreater(first["problem_number"], self.library["tasks"][-1]["problem_number"])
+        self.assertEqual(second["problem_number"], first["problem_number"] + 1)
+        opened = self.client.get(f"/api/tasks/{first['id']}").json()
+        self.assertIsNotNone(opened["progress"]["last_opened_at"])
+        opened_at = opened["progress"]["last_opened_at"]
+        saved = self.client.patch(f"/api/tasks/{first['id']}/progress", json={"status": "solved", "notes": "保留"}).json()
+        self.assertEqual(saved["last_opened_at"], opened_at)
+        listed = next(task for task in self.client.get("/api/tasks").json() if task["id"] == first["id"])
+        self.assertEqual(listed["progress"]["last_opened_at"], opened_at)
+        self.client.delete(f"/api/tasks/{first['id']}")
+        third = self.create_task(title="新问题")
+        self.assertEqual(third["problem_number"], second["problem_number"] + 1)
+
+    def test_open_time_and_number_survive_backup_restore(self):
+        task = self.create_task()
+        opened = self.client.get(f"/api/tasks/{task['id']}").json()
+        backup = self.client.get("/api/library/backup").json()
+        self.assertEqual(backup["progress"][task["id"]]["last_opened_at"], opened["progress"]["last_opened_at"])
+        self.client.post("/api/library/restore", json=backup)
+        after_restore = self.client.get("/api/library/backup").json()
+        self.assertEqual(after_restore["progress"][task["id"]]["last_opened_at"], opened["progress"]["last_opened_at"])
+        restored = self.client.get(f"/api/tasks/{task['id']}").json()
+        self.assertEqual(restored["problem_number"], task["problem_number"])
+
+    def test_large_markdown_description_accepts_embedded_image_data(self):
+        task = self.create_task(description="![image](data:image/png;base64," + "A" * 1_400_000 + ")")
+        self.assertEqual(len(task["description"]), 1_400_032)
+        listed = next(item for item in self.client.get("/api/tasks").json() if item["id"] == task["id"])
+        self.assertNotIn("A" * 100, listed["search_text"])
+
+    def test_backup_preserves_number_gaps_and_handles_collisions(self):
+        deleted = self.create_task()
+        self.client.delete(f"/api/tasks/{deleted['id']}")
+        kept = self.create_task(title="Kept number")
+        highest = self.create_task()
+        self.client.delete(f"/api/tasks/{highest['id']}")
+        backup = self.client.get("/api/library/backup").json()
+        with TestClient(create_app(Path(self.directory.name) / "gap-restore.db")) as target:
+            response = target.post("/api/library/restore", json=backup)
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = target.get(f"/api/tasks/{kept['id']}").json()
+            self.assertEqual(restored["problem_number"], kept["problem_number"])
+            new = target.post("/api/tasks", json={"title": "After restore"}).json()
+            self.assertGreater(new["problem_number"], highest["problem_number"])
+        with TestClient(create_app(Path(self.directory.name) / "collision.db")) as target:
+            target.post("/api/tasks", json={"title": "Existing A"})
+            existing = target.post("/api/tasks", json={"title": "Existing B"}).json()
+            target.post("/api/library/restore", json=backup)
+            tasks = target.get("/api/tasks").json()
+            numbers = [item["problem_number"] for item in tasks]
+            self.assertEqual(len(numbers), len(set(numbers)))
+            self.assertEqual(target.get(f"/api/tasks/{existing['id']}").json()["problem_number"], existing["problem_number"])
 
     def test_custom_problem_crud_and_manual_completion(self):
         task = self.create_task()

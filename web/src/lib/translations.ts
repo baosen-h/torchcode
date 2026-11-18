@@ -74,7 +74,7 @@ export const ENGLISH: Record<string, string> = {
   "切换运行环境或安装依赖": "Switch Python environment or install packages",
   "环境：{0}": "Python: {0}",
   "备份已导出，包含自建问题、分类、完成状态、个人解法和代码草稿。": "Backup exported with custom problems, categories, progress, notes, and code drafts.",
-  "备份文件不能超过 20 MB。": "Backup files must be no larger than 20 MB.",
+  "备份文件不能超过 100 MB。": "Backup files must be no larger than 100 MB.",
   "请选择有效的 TorchCode 备份文件。": "Choose a valid TorchCode backup file.",
   "导入完成：{0} 个自建问题、{1} 个分类、{2} 条学习记录。": "Imported {0} custom problems, {1} categories, and {2} progress records.",
   "把解决过的问题，变成积累。": "Keep what you have learned.",
@@ -325,5 +325,17 @@ export const ENGLISH: Record<string, string> = {
   "无法读取运行结果，请重试。": "Could not read the execution result. Please retry.",
   "无法启动所选 Python 环境：{0}": "Could not start the selected Python environment: {0}",
   "环境管理仅支持本机访问": "Environment management is available only on this machine.",
-  "请从本机 TorchCode 页面管理环境": "Manage environments from a local TorchCode page."
+  "请从本机 TorchCode 页面管理环境": "Manage environments from a local TorchCode page.",
+  "最近打开：{0}": "Last opened: {0}",
+  "打开来源链接": "Open source link",
+  "TorchCode 上游": "TorchCode upstream",
+  "支持 Markdown 和图片": "Markdown and images supported",
+  "插入图片": "Insert image",
+  "粘贴的图片": "Pasted image",
+  "支持 PNG、JPEG、WebP 或 GIF 图片。": "Use a PNG, JPEG, WebP, or GIF image.",
+  "单张图片不能超过 1 MB。": "Each image must be 1 MB or smaller.",
+  "可直接粘贴图片 · 单张最大 1 MB": "Paste images directly · Up to 1 MB each",
+  "无法读取图片，请重试。": "Could not read the image. Please retry.",
+  "文字和图片内容总长度不能超过 500 万字符。": "Text and image content must not exceed 5,000,000 characters.",
+  "最近打开": "Last opened"
 };
